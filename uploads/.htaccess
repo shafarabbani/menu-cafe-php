@@ -1,0 +1,12 @@
+# Mencegah eksekusi file PHP di folder uploads
+<FilesMatch "\.php$">
+    Deny from all
+</FilesMatch>
+
+# Hanya izinkan akses ke file gambar
+<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
+    Allow from all
+</FilesMatch>
+
+# Mencegah directory listing
+Options -Indexes
