@@ -15,7 +15,7 @@ $kategori = '';
 
 // Konstanta upload
 define('MAX_FILE_SIZE', 2 * 1024 * 1024); // 2MB
-define('UPLOAD_DIR', 'uploads/');
+define('UPLOAD_DIR', __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR);
 $allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
 $allowed_ext = ['jpg', 'jpeg', 'png'];
 

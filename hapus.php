@@ -42,7 +42,7 @@ $stmt_delete->bind_param("i", $id);
 
 if ($stmt_delete->execute()) {
     // Hapus file gambar dari folder uploads
-    $gambar_path = 'uploads/' . $menu['gambar'];
+    $gambar_path = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $menu['gambar'];
     if (!empty($menu['gambar']) && file_exists($gambar_path)) {
         unlink($gambar_path);
     }

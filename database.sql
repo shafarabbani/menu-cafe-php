@@ -27,7 +27,7 @@ CREATE TABLE `users` (
 -- Username: admin | Password: admin123 (sudah di-hash dengan bcrypt)
 -- Hash dihasilkan menggunakan: password_hash('admin123', PASSWORD_BCRYPT)
 INSERT INTO `users` (`username`, `password`) VALUES
-('admin', '$2y$10$oqC8VfGRDUfvWjWBtWERu./sKUI78fpfkr.5DjmRfKohir4SIYk2C');
+('admin', '$2y$10$zACdexBoa/Fg6Tg2lOX7Eu8K4OP8qLKe0l.wF4Yl4aA9xmcdJmHOK');
 
 -- ============================================================
 -- TABEL: menu
