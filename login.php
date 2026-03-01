@@ -16,8 +16,7 @@ $error = '';
 
 // Proses login saat form disubmit
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Include koneksi database
-    require_once 'config/database.php';
+    require_once 'config/api.php';
 
     // Ambil dan bersihkan input
     $username = trim($_POST['username'] ?? '');
@@ -27,33 +26,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($username) || empty($password)) {
         $error = 'Username dan password wajib diisi!';
     } else {
-        // Cari user berdasarkan username dengan prepared statement
-        $stmt = $koneksi->prepare("SELECT id, username, password FROM users WHERE username = ?");
-        $stmt->bind_param("s", $username);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        // Panggil API login
+        $response = api_post_json('/api/auth/login.php', [
+            'username' => $username,
+            'password' => $password
+        ]);
 
-        if ($result->num_rows === 1) {
-            $user = $result->fetch_assoc();
+        if ($response['code'] === 200 && ($response['body']['status'] ?? '') === 'success') {
+            // Login berhasil - set session
+            $_SESSION['user_id']  = $response['body']['user_id'];
+            $_SESSION['username'] = $response['body']['username'];
 
-            // Verifikasi password dengan password_verify
-            if (password_verify($password, $user['password'])) {
-                // Login berhasil - set session
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-
-                // Redirect ke dashboard
-                header('Location: dashboard.php');
-                exit();
-            } else {
-                $error = 'Password yang Anda masukkan salah!';
-            }
+            // Redirect ke dashboard
+            header('Location: dashboard.php');
+            exit();
         } else {
-            $error = 'Username tidak ditemukan!';
+            $error = $response['body']['message'] ?? 'Terjadi kesalahan, silakan coba lagi.';
         }
-
-        $stmt->close();
-        $koneksi->close();
     }
 }
 ?>

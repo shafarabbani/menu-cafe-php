@@ -4,22 +4,17 @@
 // Deskripsi: Halaman publik - Melihat daftar menu café (tanpa login)
 // ============================================================
 
-require_once 'config/database.php';
+require_once 'config/api.php';
 
-// Ambil semua data menu
-$query = "SELECT * FROM menu ORDER BY kategori ASC, nama_menu ASC";
-$result = $koneksi->query($query);
+// Ambil semua data menu dari API
+$response = api_get('/api/menu/read_public.php');
 
-$data_menu = [];
+$data_menu     = [];
 $kategori_list = [];
 
-if ($result) {
-    while ($row = $result->fetch_assoc()) {
-        $data_menu[] = $row;
-        if (!in_array($row['kategori'], $kategori_list)) {
-            $kategori_list[] = $row['kategori'];
-        }
-    }
+if ($response['code'] === 200 && ($response['body']['status'] ?? '') === 'success') {
+    $data_menu     = $response['body']['data'] ?? [];
+    $kategori_list = $response['body']['kategori_list'] ?? [];
 }
 ?>
 <!DOCTYPE html>
@@ -560,11 +555,8 @@ if ($result) {
                 <?php foreach ($data_menu as $index => $menu): ?>
                 <div class="menu-card" data-kategori="<?= htmlspecialchars($menu['kategori']) ?>" style="animation-delay: <?= $index * 0.08 ?>s;">
                     <div class="menu-card-img-wrapper">
-                        <?php
-                        $gambar_path = 'uploads/' . $menu['gambar'];
-                        if (!empty($menu['gambar']) && file_exists($gambar_path)):
-                        ?>
-                            <img src="<?= htmlspecialchars($gambar_path) ?>" 
+                        <?php if (!empty($menu['gambar'])): ?>
+                            <img src="<?= htmlspecialchars(gambar_url($menu['gambar'])) ?>" 
                                  alt="<?= htmlspecialchars($menu['nama_menu']) ?>" 
                                  class="menu-card-img"
                                  loading="lazy">
@@ -663,9 +655,4 @@ if ($result) {
     </script>
 </body>
 </html>
-<?php
-// Tutup koneksi
-if (isset($koneksi)) {
-    $koneksi->close();
-}
-?>
+

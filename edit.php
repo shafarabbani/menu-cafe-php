@@ -6,54 +6,43 @@
 
 // Cek autentikasi
 require_once 'auth_check.php';
-require_once 'config/database.php';
+require_once 'config/api.php';
 
 $errors = [];
 
-// Konstanta upload
+// Konstanta validasi
 define('MAX_FILE_SIZE', 2 * 1024 * 1024); // 2MB
-define('UPLOAD_DIR', __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR);
-$allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
 $allowed_ext = ['jpg', 'jpeg', 'png'];
 
 // ===== AMBIL DATA MENU BERDASARKAN ID =====
 $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 
 if ($id <= 0) {
-    $_SESSION['pesan_sukses'] = ''; // clear
     header('Location: dashboard.php');
     exit();
 }
 
-// Ambil data menu dari database
-$stmt = $koneksi->prepare("SELECT * FROM menu WHERE id = ?");
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$result = $stmt->get_result();
+// Ambil data menu dari API
+$response_get = api_get('/api/menu/read_one.php?id=' . $id);
 
-if ($result->num_rows === 0) {
+if ($response_get['code'] !== 200 || ($response_get['body']['status'] ?? '') !== 'success') {
     $_SESSION['pesan_sukses'] = 'Data menu tidak ditemukan!';
-    $stmt->close();
-    $koneksi->close();
     header('Location: dashboard.php');
     exit();
 }
 
-$menu = $result->fetch_assoc();
-$stmt->close();
-
-// Set nilai awal dari database
-$nama_menu = $menu['nama_menu'];
-$harga = $menu['harga'];
-$kategori = $menu['kategori'];
-$gambar_lama = $menu['gambar'];
+$menu_data  = $response_get['body']['data'];
+$nama_menu  = $menu_data['nama_menu'];
+$harga      = $menu_data['harga'];
+$kategori   = $menu_data['kategori'];
+$gambar_lama = $menu_data['gambar'];
 
 // ===== PROSES UPDATE =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Ambil dan bersihkan input
     $nama_menu = trim($_POST['nama_menu'] ?? '');
-    $harga = trim($_POST['harga'] ?? '');
-    $kategori = trim($_POST['kategori'] ?? '');
+    $harga     = trim($_POST['harga'] ?? '');
+    $kategori  = trim($_POST['kategori'] ?? '');
 
     // ===== VALIDASI =====
     if (empty($nama_menu)) {
@@ -78,9 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ===== VALIDASI GAMBAR (opsional saat edit) =====
-    $nama_file_gambar = $gambar_lama; // Default: pakai gambar lama
-    $upload_baru = false;
-    
+    $file_data = null;
     if (isset($_FILES['gambar']) && $_FILES['gambar']['error'] !== UPLOAD_ERR_NO_FILE) {
         if ($_FILES['gambar']['error'] !== UPLOAD_ERR_OK) {
             switch ($_FILES['gambar']['error']) {
@@ -93,69 +80,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     break;
             }
         } else {
-            $file = $_FILES['gambar'];
+            $file     = $_FILES['gambar'];
             $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
             if (!in_array($file_ext, $allowed_ext)) {
                 $errors[] = 'Format file tidak didukung! Hanya JPG, JPEG, dan PNG.';
             }
-
-            if (!in_array($file['type'], $allowed_types)) {
-                $errors[] = 'Tipe file tidak valid!';
-            }
-
             if ($file['size'] > MAX_FILE_SIZE) {
                 $errors[] = 'Ukuran file terlalu besar! Maksimal 2MB.';
             }
-
-            $upload_baru = true;
+            $file_data = $file;
         }
     }
 
-    // ===== PROSES SIMPAN =====
+    // ===== KIRIM KE API =====
     if (empty($errors)) {
-        // Upload gambar baru jika ada
-        if ($upload_baru) {
-            if (!is_dir(UPLOAD_DIR)) {
-                mkdir(UPLOAD_DIR, 0755, true);
-            }
+        $response = api_post_multipart(
+            '/api/menu/update.php',
+            [
+                'id'        => $id,
+                'nama_menu' => $nama_menu,
+                'harga'     => $harga,
+                'kategori'  => $kategori,
+            ],
+            $file_data
+        );
 
-            $nama_file_gambar = time() . '_' . uniqid() . '.' . $file_ext;
-            $target_path = UPLOAD_DIR . $nama_file_gambar;
-
-            if (move_uploaded_file($file['tmp_name'], $target_path)) {
-                // Hapus gambar lama
-                $gambar_lama_path = UPLOAD_DIR . $gambar_lama;
-                if (!empty($gambar_lama) && file_exists($gambar_lama_path)) {
-                    unlink($gambar_lama_path);
-                }
+        if ($response['code'] === 200 && ($response['body']['status'] ?? '') === 'success') {
+            $_SESSION['pesan_sukses'] = $response['body']['message'];
+            header('Location: dashboard.php');
+            exit();
+        } else {
+            if (!empty($response['body']['errors'])) {
+                $errors = array_merge($errors, $response['body']['errors']);
             } else {
-                $errors[] = 'Gagal mengunggah file gambar!';
-                $nama_file_gambar = $gambar_lama;
+                $errors[] = $response['body']['message'] ?? 'Gagal memperbarui menu. Silakan coba lagi.';
             }
-        }
-
-        if (empty($errors)) {
-            // Update database
-            $stmt = $koneksi->prepare("UPDATE menu SET nama_menu = ?, harga = ?, kategori = ?, gambar = ? WHERE id = ?");
-            $harga_int = (int) $harga;
-            $stmt->bind_param("sissi", $nama_menu, $harga_int, $kategori, $nama_file_gambar, $id);
-
-            if ($stmt->execute()) {
-                $_SESSION['pesan_sukses'] = 'Menu "' . $nama_menu . '" berhasil diperbarui!';
-                $stmt->close();
-                $koneksi->close();
-                header('Location: dashboard.php');
-                exit();
-            } else {
-                $errors[] = 'Gagal memperbarui data: ' . $stmt->error;
-            }
-            $stmt->close();
         }
     }
 }
-
-$koneksi->close();
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -451,13 +414,10 @@ $koneksi->close();
                         <label class="form-label">Gambar Menu</label>
                         
                         <!-- Gambar saat ini -->
-                        <?php
-                        $gambar_path = UPLOAD_DIR . $gambar_lama;
-                        if (!empty($gambar_lama) && file_exists($gambar_path)):
-                        ?>
+                        <?php if (!empty($gambar_lama)): ?>
                             <div class="mb-3 text-center">
                                 <p class="text-muted mb-2" style="font-size:0.8rem; color:var(--text-muted)!important;">Gambar Saat Ini:</p>
-                                <img src="<?= htmlspecialchars($gambar_path) ?>" 
+                                <img src="<?= htmlspecialchars(gambar_url($gambar_lama)) ?>" 
                                      alt="<?= htmlspecialchars($nama_menu) ?>" 
                                      class="current-img">
                             </div>

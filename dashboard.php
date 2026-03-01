@@ -6,7 +6,7 @@
 
 // Cek autentikasi
 require_once 'auth_check.php';
-require_once 'config/database.php';
+require_once 'config/api.php';
 
 // Pesan sukses dari operasi CRUD
 $pesan_sukses = '';
@@ -15,13 +15,15 @@ if (isset($_SESSION['pesan_sukses'])) {
     unset($_SESSION['pesan_sukses']);
 }
 
-// Ambil semua data menu
-$query = "SELECT * FROM menu ORDER BY id DESC";
-$result = $koneksi->query($query);
+// Ambil semua data menu dari API
+$response = api_get('/api/menu/read.php');
+$data_menu = [];
+$error_db  = null;
 
-// Cek error query
-if (!$result) {
-    $error_db = "Gagal mengambil data menu: " . $koneksi->error;
+if ($response['code'] === 200 && ($response['body']['status'] ?? '') === 'success') {
+    $data_menu = $response['body']['data'] ?? [];
+} else {
+    $error_db = "Gagal mengambil data menu dari API.";
 }
 ?>
 <!DOCTYPE html>
@@ -439,16 +441,14 @@ if (!$result) {
             <?php else: ?>
 
             <?php
-                // Hitung statistik
-                $total = $result->num_rows;
+                // Hitung statistik dari data API
+                $total = count($data_menu);
                 $count_makanan = 0;
                 $count_minuman = 0;
                 $count_cemilan = 0;
                 $count_dessert = 0;
-                $data_menu = [];
 
-                while ($row = $result->fetch_assoc()) {
-                    $data_menu[] = $row;
+                foreach ($data_menu as $row) {
                     switch ($row['kategori']) {
                         case 'Makanan': $count_makanan++; break;
                         case 'Minuman': $count_minuman++; break;
@@ -517,11 +517,8 @@ if (!$result) {
                             <tr>
                                 <td style="color:var(--text-muted);"><?= $index + 1 ?></td>
                                 <td>
-                                    <?php
-                                    $gambar_path = 'uploads/' . $menu['gambar'];
-                                    if (file_exists($gambar_path) && !empty($menu['gambar'])):
-                                    ?>
-                                        <img src="<?= htmlspecialchars($gambar_path) ?>" 
+                                    <?php if (!empty($menu['gambar'])): ?>
+                                        <img src="<?= htmlspecialchars(gambar_url($menu['gambar'])) ?>" 
                                              alt="<?= htmlspecialchars($menu['nama_menu']) ?>" 
                                              class="menu-img">
                                     <?php else: ?>
@@ -579,9 +576,4 @@ if (!$result) {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-<?php
-// Tutup koneksi
-if (isset($koneksi)) {
-    $koneksi->close();
-}
-?>
+

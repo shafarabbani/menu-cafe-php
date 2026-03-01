@@ -6,28 +6,26 @@
 
 // Cek autentikasi
 require_once 'auth_check.php';
-require_once 'config/database.php';
+require_once 'config/api.php';
 
-$errors = [];
+$errors    = [];
 $nama_menu = '';
-$harga = '';
-$kategori = '';
+$harga     = '';
+$kategori  = '';
 
-// Konstanta upload
+// Konstanta validasi (hanya untuk validasi client-side di PHP, upload dilakukan oleh API)
 define('MAX_FILE_SIZE', 2 * 1024 * 1024); // 2MB
-define('UPLOAD_DIR', __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR);
-$allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
 $allowed_ext = ['jpg', 'jpeg', 'png'];
 
 // Proses form saat disubmit
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Ambil dan bersihkan input
     $nama_menu = trim($_POST['nama_menu'] ?? '');
-    $harga = trim($_POST['harga'] ?? '');
-    $kategori = trim($_POST['kategori'] ?? '');
+    $harga     = trim($_POST['harga'] ?? '');
+    $kategori  = trim($_POST['kategori'] ?? '');
 
-    // ===== VALIDASI =====
-    
+    // ===== VALIDASI CLIENT-SIDE =====
+
     // Nama menu wajib diisi
     if (empty($nama_menu)) {
         $errors[] = 'Nama menu wajib diisi!';
@@ -53,12 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ===== VALIDASI GAMBAR =====
-    $nama_file_gambar = '';
-    
     if (!isset($_FILES['gambar']) || $_FILES['gambar']['error'] === UPLOAD_ERR_NO_FILE) {
         $errors[] = 'Gambar menu wajib diunggah!';
     } elseif ($_FILES['gambar']['error'] !== UPLOAD_ERR_OK) {
-        // Error upload
         switch ($_FILES['gambar']['error']) {
             case UPLOAD_ERR_INI_SIZE:
             case UPLOAD_ERR_FORM_SIZE:
@@ -69,64 +64,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
         }
     } else {
-        $file = $_FILES['gambar'];
+        $file     = $_FILES['gambar'];
         $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        
-        // Cek ekstensi file
         if (!in_array($file_ext, $allowed_ext)) {
             $errors[] = 'Format file tidak didukung! Hanya JPG, JPEG, dan PNG yang diperbolehkan.';
         }
-
-        // Cek tipe MIME
-        if (!in_array($file['type'], $allowed_types)) {
-            $errors[] = 'Tipe file tidak valid!';
-        }
-
-        // Cek ukuran file
         if ($file['size'] > MAX_FILE_SIZE) {
             $errors[] = 'Ukuran file terlalu besar! Maksimal 2MB.';
         }
     }
 
-    // ===== PROSES SIMPAN =====
+    // ===== KIRIM KE API =====
     if (empty($errors)) {
-        // Buat folder uploads jika belum ada
-        if (!is_dir(UPLOAD_DIR)) {
-            mkdir(UPLOAD_DIR, 0755, true);
-        }
+        $file_data = (isset($file)) ? $file : null;
 
-        // Buat nama file unik
-        $nama_file_gambar = time() . '_' . uniqid() . '.' . $file_ext;
-        $target_path = UPLOAD_DIR . $nama_file_gambar;
+        $response = api_post_multipart(
+            '/api/menu/create.php',
+            [
+                'nama_menu' => $nama_menu,
+                'harga'     => $harga,
+                'kategori'  => $kategori,
+            ],
+            $file_data
+        );
 
-        // Upload file
-        if (move_uploaded_file($file['tmp_name'], $target_path)) {
-            // Simpan ke database dengan prepared statement
-            $stmt = $koneksi->prepare("INSERT INTO menu (nama_menu, harga, kategori, gambar) VALUES (?, ?, ?, ?)");
-            $harga_int = (int) $harga;
-            $stmt->bind_param("siss", $nama_menu, $harga_int, $kategori, $nama_file_gambar);
-
-            if ($stmt->execute()) {
-                $_SESSION['pesan_sukses'] = 'Menu "' . $nama_menu . '" berhasil ditambahkan!';
-                $stmt->close();
-                $koneksi->close();
-                header('Location: dashboard.php');
-                exit();
-            } else {
-                $errors[] = 'Gagal menyimpan data ke database: ' . $stmt->error;
-                // Hapus file yang sudah diupload jika gagal simpan
-                if (file_exists($target_path)) {
-                    unlink($target_path);
-                }
-            }
-            $stmt->close();
+        if ($response['code'] === 201 && ($response['body']['status'] ?? '') === 'success') {
+            $_SESSION['pesan_sukses'] = $response['body']['message'];
+            header('Location: dashboard.php');
+            exit();
         } else {
-            $errors[] = 'Gagal mengunggah file gambar! Pastikan folder uploads memiliki izin tulis.';
+            // Tampilkan error dari API
+            if (!empty($response['body']['errors'])) {
+                $errors = array_merge($errors, $response['body']['errors']);
+            } else {
+                $errors[] = $response['body']['message'] ?? 'Gagal menyimpan menu. Silakan coba lagi.';
+            }
         }
     }
 }
-
-$koneksi->close();
 ?>
 <!DOCTYPE html>
 <html lang="id">
